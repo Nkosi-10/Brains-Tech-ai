@@ -14,9 +14,8 @@ const closeChatbot = document.querySelector("#close-chatbot");
 // WE REMOVE THE Beta key word : https://generativelanguage.googleapis.com/v1{beta}/models/gemini-1.5-flash:generateContent?key=$GOOGLE_API_KEY
 
 
-//API setup 
-const API_KEY = "abcd1234efgh5678abcd1234efgh5678abcd1234";
-const API_URL = `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=${API_KEY}`;
+//API setup - now using our serverless function
+const API_URL = "/api/chat";
 
 const userData = {
     message: null, 
@@ -61,10 +60,28 @@ const geneteBotResponse =  async(incomingMessageDiv) =>{
 
         //fetch bot response from API
         const response =  await fetch(API_URL, requestOptions);
-        const data = await response.json();
-        if(!response.ok) throw new Error(data.error.message);
+        
+        // Check if response is ok before parsing JSON
+        if(!response.ok) {
+            const errorText = await response.text();
+            console.error('API Error Response:', errorText);
+            throw new Error(`API request failed: ${response.status} ${response.statusText}`);
+        }
 
-        //console.log(data);
+        let data;
+        try {
+            data = await response.json();
+        } catch (parseError) {
+            console.error('JSON Parse Error:', parseError);
+            throw new Error('Invalid response from server');
+        }
+
+        // Validate response structure
+        if (!data.candidates || !data.candidates[0] || !data.candidates[0].content || !data.candidates[0].content.parts) {
+            console.error('Invalid response structure:', data);
+            throw new Error('Invalid response structure from API');
+        }
+
         //Extract and display bots response text
         const apiResponseText = data.candidates[0].content.parts[0].text.replace(/\*\*(.*?)\*\*/g, "$1").trim();
         messageElement.innerText = apiResponseText;
@@ -72,11 +89,11 @@ const geneteBotResponse =  async(incomingMessageDiv) =>{
         // adding response to chat history
         chatHistory.push({
             role: "model" , 
-            parts: [{ text: userData.message}]
+            parts: [{ text: apiResponseText}]
             });
     }   catch(error){
-        console.log(error);
-        messageElement.innerText = error.message;
+        console.error('Frontend Error:', error);
+        messageElement.innerText = error.message || 'Something went wrong. Please try again.';
         messageElement.style.color = "#ff0000";
     }   finally{
         userData.file = {}
